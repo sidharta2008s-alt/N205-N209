@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Windmill blades: smooth vs. tubercles</title>
+<style>
+:root{--bg:#eef3f5;--panel:#fbfdfd;--ink:#16262e;--mute:#5d737d;--line:#cfdbe0;--blade:#f4f7f8;--edge:#16262e;--a:#d2553d;--b:#0f8b8d;--air:#7fa3b0;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1a20;--panel:#14252d;--ink:#e6f0f3;--mute:#8fa9b3;--line:#27404a;--blade:#dfe9ec;--edge:#05090b;--a:#ff7a5f;--b:#3cc5c7;--air:#5d8795}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 "Avenir Next","Segoe UI",Roboto,sans-serif;padding:20px 16px 32px}
+main{max-width:1000px;margin:0 auto}
+h1{font-size:clamp(1.5rem,4vw,2.2rem);margin:0 0 6px;letter-spacing:-.01em}
+p.lead{margin:0 0 16px;color:var(--mute);max-width:68ch}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+canvas{display:block;width:100%}
+.stats{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--line)}
+.stats div{padding:12px 16px}
+.stats div+div{border-left:1px solid var(--line)}
+.stats h2{margin:0 0 4px;font-size:1rem}
+.stats .a{color:var(--a)}.stats .b{color:var(--b)}
+.stats span{display:block;color:var(--mute);font-size:.9rem}
+.stats strong{font-size:1.35rem;color:var(--ink)}
+.ctl{display:flex;gap:14px;align-items:center;margin:16px 0;flex-wrap:wrap}
+.ctl label{font-weight:600}
+input[type=range]{flex:1;min-width:200px;accent-color:var(--b)}
+output{min-width:5.5ch;font-weight:700}
+.chart{margin-top:6px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
+.chart h2{font-size:1rem;margin:0 0 6px}
+.note{color:var(--mute);font-size:.92rem;margin-top:14px;max-width:75ch}
+</style>
+</head>
+<body>
+<main>
+<h1>Windmill blades: smooth vs. tubercles</h1>
+<p class="lead">Tubercles are the bumps on a humpback whale’s flipper. On a turbine blade they break the airflow into small streamwise vortices that keep it attached longer. Raise the wind speed and watch the smooth blade stall first.</p>
+<div class="stage">
+<canvas id="cv"></canvas>
+<div class="stats">
+<div><h2 class="a">Smooth blades</h2><strong id="pa">0 kW</strong><span id="ra"></span><span id="fa"></span></div>
+<div><h2 class="b">Tubercle blades</h2><strong id="pb">0 kW</strong><span id="rb"></span><span id="fb"></span></div>
+</div>
+</div>
+<div class="ctl"><label for="w">Wind speed</label><input id="w" type="range" min="3" max="20" step="0.1" value="8"><output id="wo">8 m/s</output></div>
+<div class="chart"><h2>Power vs. wind speed</h2><canvas id="ch"></canvas></div>
+<p class="note">Simplified stall-regulated model, 40 m blades: both rotors share the same size and wind. The tubercle rotor gives up about 2% peak efficiency but stalls later and more gradually, so it keeps producing power in stronger wind. Behind the rotor, smooth blades shed a chaotic wake while tubercle blades leave a calmer one. Numbers are illustrative, not measured.</p>
+</main>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d'),ch=document.getElementById('ch'),cc=ch.getContext('2d');
+const W=1000,H=420,CX=[250,750],HY=185,R=135,TOWERY=410;
+const P=[{base:.42,on:9,w:3.5,tub:false,ang:0,pts:[]},{base:.41,on:11,w:4,tub:true,ang:0,pts:[]}];
+let wind=8;
+const sf=(v,p)=>v<=p.on?1:Math.exp(-Math.pow((v-p.on)/p.w,2));
+const power=(v,p)=>0.5*1.225*Math.PI*1600*v*v*v*p.base*sf(v,p)/1e6;
+P.forEach(p=>{for(let i=0;i<110;i++)p.pts.push({x:Math.random()*500,y:15+Math.random()*390,vy:0})});
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function size(){const d=devicePixelRatio||1,w=cv.clientWidth;cv.width=w*d;cv.height=w*d*H/W;
+ const w2=ch.clientWidth;ch.width=w2*d;ch.height=w2*d*.32}
+addEventListener('resize',size);size();
+function blade(p,a,tub,shake){
+ ctx.save();ctx.rotate(a+shake);ctx.beginPath();
+ const N=70,r0=14,le=[],te=[];
+ for(let i=0;i<=N;i++){const s=i/N,r=r0+s*(R-r0);
+  let c=26*(1-.72*s)*(s<.08?.55+s/.08*.45:1)+3;
+  let l=.65*c;if(tub&&s>.2)l-=.3*c*(.5-.5*Math.cos(2*Math.PI*9*(s-.2)/.8)); 
+  le.push([l,-r]);te.push([-.35*c,-r]);}
+ ctx.moveTo(te[0][0],te[0][1]);
+ le.forEach(q=>ctx.lineTo(q[0],q[1]));
+ for(let i=N;i>=0;i--)ctx.lineTo(te[i][0],te[i][1]);
+ ctx.closePath();ctx.fillStyle=css('--blade');ctx.fill();
+ ctx.strokeStyle=css('--edge');ctx.lineWidth=1.4;ctx.stroke();ctx.restore();
+}
+function turbine(i,shake){
+ const p=P[i];ctx.save();ctx.translate(CX[i],0);
+ ctx.fillStyle=css('--line');ctx.beginPath();ctx.moveTo(-7,HY);ctx.lineTo(7,HY);ctx.lineTo(11,TOWERY);ctx.lineTo(-11,TOWERY);ctx.fill();
+ ctx.translate(0,HY);
+ for(let k=0;k<3;k++)blade(p,p.ang+k*2.0944,p.tub,shake);
+ ctx.fillStyle=css('--edge');ctx.beginPath();ctx.arc(0,0,11,0,7);ctx.fill();
+ ctx.restore();
+}
+let last=performance.now(),t=0;
+function frame(now){
+ const dt=Math.min(.05,(now-last)/1e3);last=now;t+=dt;
+ const d=cv.width/W;ctx.setTransform(d,0,0,d,0,0);ctx.clearRect(0,0,W,H);
+ ctx.fillStyle=css('--panel');ctx.fillRect(0,0,W,H);
+ ctx.strokeStyle=css('--line');ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(500,0);ctx.lineTo(500,H);ctx.stroke();
+ const out=[];
+ P.forEach((p,i)=>{
+  const s=sf(wind,p),rpm=1.6*Math.min(wind,12)*(.3+.7*s);
+  p.ang+=rpm*2*Math.PI/60*dt*3;
+  const jit=(i?150:600)*(1-s)+(i?25:45);
+  ctx.save();ctx.translate(i*500,0);
+  ctx.strokeStyle=css('--air');ctx.lineWidth=1.5;ctx.globalAlpha=.75;
+  p.pts.forEach(q=>{
+   const after=q.x>CX[i]-500+i*500-(i*500)+0&&q.x>250;
+   const sp=wind*5*(after?.7:1);
+   q.x+=sp*dt;
+   if(after){q.vy+=(Math.random()-.5)*jit*dt*14;q.vy*=.95;q.y+=q.vy*dt;}
+   if(q.x>500||q.y<5||q.y>415){q.x=0;q.y=15+Math.random()*390;q.vy=0}
+   ctx.beginPath();ctx.moveTo(q.x,q.y);ctx.lineTo(q.x-sp*.07,q.y-q.vy*.07);ctx.stroke();
+  });
+  ctx.restore();ctx.globalAlpha=1;
+  turbine(i,(1-s)*(i?.004:.012)*Math.sin(t*38));
+  out.push([power(wind,p),rpm,s]);
+ });
+ const fl=s=>s>.9?'Flow attached':s>.5?'Flow separating':'Blades stalled';
+ pa.textContent=Math.round(out[0][0]*1e3)+' kW';pb.textContent=Math.round(out[1][0]*1e3)+' kW';
+ ra.textContent=out[0][1].toFixed(1)+' rpm';rb.textContent=out[1][1].toFixed(1)+' rpm';
+ fa.textContent=fl(out[0][2]);fb.textContent=fl(out[1][2]);
+ drawChart();requestAnimationFrame(frame);
+}
+function drawChart(){
+ const d=ch.width/ch.clientWidth,w=ch.clientWidth,h=ch.height/d;cc.setTransform(d,0,0,d,0,0);cc.clearRect(0,0,w,h);
+ const m={l:44,r:10,t:8,b:24},iw=w-m.l-m.r,ih=h-m.t-m.b;
+ let mx=0;for(let v=3;v<=20;v+=.5)P.forEach(p=>mx=Math.max(mx,power(v,p)));
+ const X=v=>m.l+(v-3)/17*iw,Y=k=>m.t+ih*(1-k/mx);
+ cc.font='12px sans-serif';cc.fillStyle=css('--mute');cc.strokeStyle=css('--line');cc.lineWidth=1;
+ for(let k=0;k<=4;k++){const val=mx*k/4;cc.beginPath();cc.moveTo(m.l,Y(val));cc.lineTo(w-m.r,Y(val));cc.stroke();cc.fillText(Math.round(val*1e3)+' kW',2,Y(val)+4)}
+ for(let v=4;v<=20;v+=4)cc.fillText(v+' m/s',X(v)-16,h-6);
+ [css('--a'),css('--b')].forEach((col,i)=>{cc.strokeStyle=col;cc.lineWidth=2.5;cc.beginPath();
+  for(let v=3;v<=20;v+=.25){const x=X(v),y=Y(power(v,P[i]));v==3?cc.moveTo(x,y):cc.lineTo(x,y)}cc.stroke();
+  cc.fillStyle=col;cc.beginPath();cc.arc(X(wind),Y(power(wind,P[i])),5,0,7);cc.fill()});
+ cc.strokeStyle=css('--mute');cc.setLineDash([3,4]);cc.lineWidth=1;cc.beginPath();cc.moveTo(X(wind),m.t);cc.lineTo(X(wind),m.t+ih);cc.stroke();cc.setLineDash([]);
+}
+const sl=document.getElementById('w'),wo=document.getElementById('wo');
+sl.oninput=()=>{wind=+sl.value;wo.textContent=wind.toFixed(1)+' m/s'};
+const pa=document.getElementById('pa'),pb=document.getElementById('pb'),ra=document.getElementById('ra'),rb=document.getElementById('rb'),fa=document.getElementById('fa'),fb=document.getElementById('fb');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
